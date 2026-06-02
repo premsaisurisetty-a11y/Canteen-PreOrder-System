@@ -1,4 +1,15 @@
 import React, { createContext, useState, useEffect } from 'react';
+import { db } from '../firebase';
+import { 
+  collection, 
+  doc, 
+  setDoc, 
+  updateDoc, 
+  deleteDoc, 
+  onSnapshot, 
+  query, 
+  orderBy 
+} from 'firebase/firestore';
 
 export const CanteenContext = createContext();
 
@@ -86,15 +97,8 @@ const INITIAL_MENU = [
 ];
 
 export const CanteenProvider = ({ children }) => {
-  const [menuItems, setMenuItems] = useState(() => {
-    try {
-      const savedMenu = localStorage.getItem('canteen_menu');
-      return savedMenu ? JSON.parse(savedMenu) : INITIAL_MENU;
-    } catch (e) {
-      console.error("Failed to parse saved menu, falling back to initial menu:", e);
-      return INITIAL_MENU;
-    }
-  });
+  const [menuItems, setMenuItems] = useState([]);
+  const [orders, setOrders] = useState([]);
 
   const [cart, setCart] = useState(() => {
     try {
@@ -102,16 +106,6 @@ export const CanteenProvider = ({ children }) => {
       return savedCart ? JSON.parse(savedCart) : [];
     } catch (e) {
       console.error("Failed to parse saved cart:", e);
-      return [];
-    }
-  });
-
-  const [orders, setOrders] = useState(() => {
-    try {
-      const savedOrders = localStorage.getItem('canteen_orders');
-      return savedOrders ? JSON.parse(savedOrders) : [];
-    } catch (e) {
-      console.error("Failed to parse saved orders:", e);
       return [];
     }
   });
@@ -126,15 +120,58 @@ export const CanteenProvider = ({ children }) => {
     }
   });
 
-  // Sync state to local storage when changed
+  // 1. Sync Menu Items from Firestore in Real-Time (with Seeding)
   useEffect(() => {
-    try {
-      localStorage.setItem('canteen_menu', JSON.stringify(menuItems));
-    } catch (e) {
-      console.error("Failed to save menu to localStorage:", e);
-    }
-  }, [menuItems]);
+    const menuCol = collection(db, 'menu');
+    const unsubscribe = onSnapshot(menuCol, async (snapshot) => {
+      if (snapshot.empty) {
+        console.log("Firestore 'menu' collection is empty. Seeding defaults...");
+        // Seed default items using their numeric ID as document ID
+        for (const item of INITIAL_MENU) {
+          try {
+            await setDoc(doc(db, 'menu', item.id.toString()), item);
+          } catch (err) {
+            console.error("Failed to seed menu item:", item.name, err);
+          }
+        }
+      } else {
+        const items = snapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            ...data,
+            id: isNaN(doc.id) ? doc.id : Number(doc.id)
+          };
+        });
+        // Sort items by numeric ID to preserve order
+        items.sort((a, b) => a.id - b.id);
+        setMenuItems(items);
+      }
+    }, (error) => {
+      console.error("Firestore menu snapshot listener failed:", error);
+    });
 
+    return () => unsubscribe();
+  }, []);
+
+  // 2. Sync Orders from Firestore in Real-Time
+  useEffect(() => {
+    const ordersCol = collection(db, 'orders');
+    const q = query(ordersCol, orderBy('createdAt', 'desc'));
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const ordersList = snapshot.docs.map(doc => ({
+        ...doc.data(),
+        id: doc.id
+      }));
+      setOrders(ordersList);
+    }, (error) => {
+      console.error("Firestore orders snapshot listener failed:", error);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Sync Cart to local storage when changed
   useEffect(() => {
     try {
       localStorage.setItem('canteen_cart', JSON.stringify(cart));
@@ -143,14 +180,7 @@ export const CanteenProvider = ({ children }) => {
     }
   }, [cart]);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem('canteen_orders', JSON.stringify(orders));
-    } catch (e) {
-      console.error("Failed to save orders to localStorage:", e);
-    }
-  }, [orders]);
-
+  // Sync User to local storage when changed
   useEffect(() => {
     try {
       if (currentUser) {
@@ -163,22 +193,16 @@ export const CanteenProvider = ({ children }) => {
     }
   }, [currentUser]);
 
-  // Sync state across different tabs/windows (Real-time connection between Admin & Student)
+  // Sync Cart across different tabs in real-time
   useEffect(() => {
     const handleStorageChange = (e) => {
       try {
-        // If storage is cleared or key removed, ignore to prevent resetting active states in other tabs
         if (!e.newValue) return;
-
-        if (e.key === 'canteen_orders') {
-          setOrders(JSON.parse(e.newValue));
-        } else if (e.key === 'canteen_menu') {
-          setMenuItems(JSON.parse(e.newValue));
-        } else if (e.key === 'canteen_cart') {
+        if (e.key === 'canteen_cart') {
           setCart(JSON.parse(e.newValue));
         }
       } catch (err) {
-        console.error("Storage sync event parsing failed:", err);
+        console.error("Cart storage sync event parsing failed:", err);
       }
     };
 
@@ -241,64 +265,72 @@ export const CanteenProvider = ({ children }) => {
       pickupTime: pickupTime,
       paymentMethod: paymentMethod,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      createdAt: new Date().toISOString(),
       status: "Placed", // Status: Placed -> Preparing -> Ready -> Completed
       userRollNo: currentUser?.rollNo || "GUEST",
       userName: currentUser?.name || "Guest Student"
     };
 
-    setOrders((prevOrders) => [newOrder, ...prevOrders]);
+    // Save to Firestore in background
+    setDoc(doc(db, 'orders', orderId), newOrder).catch((e) => {
+      console.error("Failed to place order in Firestore:", e);
+    });
+
     clearCart();
     return newOrder;
   };
 
   // Admin order status update
   const updateOrderStatus = (orderId, newStatus) => {
-    setOrders((prevOrders) =>
-      prevOrders.map((order) =>
-        order.id === orderId ? { ...order, status: newStatus } : order
-      )
-    );
+    const orderRef = doc(db, 'orders', orderId);
+    updateDoc(orderRef, { status: newStatus }).catch((e) => {
+      console.error("Failed to update order status in Firestore:", e);
+    });
   };
 
   // Student cancel order (only allowed when status is Placed)
   const cancelOrder = (orderId) => {
-    setOrders((prevOrders) =>
-      prevOrders.map((order) =>
-        order.id === orderId && order.status === 'Placed'
-          ? { ...order, status: 'Cancelled' }
-          : order
-      )
-    );
+    const orderRef = doc(db, 'orders', orderId);
+    updateDoc(orderRef, { status: 'Cancelled' }).catch((e) => {
+      console.error("Failed to cancel order in Firestore:", e);
+    });
   };
 
   // Admin toggle item stock availability
   const toggleStock = (itemId) => {
-    setMenuItems((prevMenu) =>
-      prevMenu.map((item) =>
-        item.id === itemId ? { ...item, inStock: !item.inStock } : item
-      )
-    );
+    const itemRef = doc(db, 'menu', itemId.toString());
+    const item = menuItems.find(i => i.id === itemId);
+    if (item) {
+      updateDoc(itemRef, { inStock: !item.inStock }).catch((e) => {
+        console.error("Failed to toggle stock in Firestore:", e);
+      });
+    }
   };
 
   // Admin add new menu item
   const addMenuItem = (newItem) => {
-    setMenuItems((prevMenu) => {
-      const newId = prevMenu.length > 0 ? Math.max(...prevMenu.map(i => i.id)) + 1 : 1;
-      return [...prevMenu, { ...newItem, id: newId, inStock: true }];
+    const newId = menuItems.length > 0 ? Math.max(...menuItems.map(i => i.id)) + 1 : 1;
+    const itemRef = doc(db, 'menu', newId.toString());
+    setDoc(itemRef, { ...newItem, id: newId, inStock: true }).catch((e) => {
+      console.error("Failed to add menu item in Firestore:", e);
     });
   };
 
   // Admin edit menu item
   const editMenuItem = (id, updatedItem) => {
-    setMenuItems((prevMenu) =>
-      prevMenu.map((item) => (item.id === id ? { ...item, ...updatedItem } : item))
-    );
+    const itemRef = doc(db, 'menu', id.toString());
+    updateDoc(itemRef, updatedItem).catch((e) => {
+      console.error("Failed to edit menu item in Firestore:", e);
+    });
   };
 
   // Admin delete menu item
   const deleteMenuItem = (id) => {
-    setMenuItems((prevMenu) => prevMenu.filter((item) => item.id !== id));
-    // Remove deleted items from cart as well to prevent errors
+    const itemRef = doc(db, 'menu', id.toString());
+    deleteDoc(itemRef).catch((e) => {
+      console.error("Failed to delete menu item in Firestore:", e);
+    });
+    // Remove from cart locally as well
     setCart((prevCart) => prevCart.filter((item) => item.id !== id));
   };
 
