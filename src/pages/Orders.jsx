@@ -4,20 +4,21 @@ import { QRCodeSVG } from 'qrcode.react';
 import { CanteenContext } from '../context/CanteenContext';
 
 const Orders = () => {
-  const { orders, updateOrderStatus, currentUser } = useContext(CanteenContext);
+  const { orders, updateOrderStatus, cancelOrder, currentUser } = useContext(CanteenContext);
 
   // Only show orders belonging to the currently logged-in user
   const userOrders = orders.filter(o => o.userRollNo === currentUser?.rollNo);
 
-  const activeOrders = userOrders.filter(o => o.status !== "Completed");
-  const pastOrders = userOrders.filter(o => o.status === "Completed");
+  const activeOrders = userOrders.filter(o => o.status !== 'Completed' && o.status !== 'Cancelled');
+  const pastOrders = userOrders.filter(o => o.status === 'Completed' || o.status === 'Cancelled');
 
   // Status mapping details
   const statusConfig = {
     Placed: { index: 1, label: "Placed", color: "text-blue-500 bg-blue-50 border-blue-200 dark:bg-blue-950/20 dark:border-blue-900/50", desc: "Awaiting kitchen approval" },
     Preparing: { index: 2, label: "Preparing", color: "text-amber-500 bg-amber-50 border-amber-200 dark:bg-amber-950/20 dark:border-amber-900/50 animate-pulse", desc: "Chef is frying & cooking fresh" },
     Ready: { index: 3, label: "Ready to Pick Up", color: "text-emerald-500 bg-emerald-50 border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-900/50 animate-bounce", desc: "Proceed to counter, show ticket QR" },
-    Completed: { index: 4, label: "Completed", color: "text-slate-500 bg-slate-50 border-slate-200 dark:bg-slate-900 dark:border-slate-800", desc: "Successfully picked up & enjoyed" }
+    Completed: { index: 4, label: "Completed", color: "text-slate-500 bg-slate-50 border-slate-200 dark:bg-slate-900 dark:border-slate-800", desc: "Successfully picked up & enjoyed" },
+    Cancelled: { index: 0, label: "Cancelled", color: "text-red-500 bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-900/50", desc: "Order was cancelled by student" }
   };
 
   return (
@@ -161,6 +162,20 @@ const Orders = () => {
                           <span className="text-xs font-normal opacity-90 text-right max-w-[180px]">{currentStatus.desc}</span>
                         </div>
 
+                        {/* Cancel Order — only when Placed */}
+                        {order.status === 'Placed' && (
+                          <button
+                            onClick={() => {
+                              if (window.confirm(`Cancel order ${order.id}? This cannot be undone.`)) {
+                                cancelOrder(order.id);
+                              }
+                            }}
+                            className="w-full flex items-center justify-center gap-2 border border-red-200 dark:border-red-900/50 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 font-bold text-xs uppercase py-2.5 rounded-xl transition-all active:scale-95"
+                          >
+                            <span>✕</span> Cancel Order
+                          </button>
+                        )}
+
                         {/* Visual Preparation Steps */}
                         <div className="relative pl-6 space-y-6 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-100 dark:before:bg-slate-800">
                           
@@ -232,27 +247,31 @@ const Orders = () => {
               <div className="bg-white dark:bg-slate-950 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm divide-y divide-slate-50 dark:divide-slate-900/50 px-6">
                 {pastOrders.map((order) => (
                   <div key={order.id} className="flex justify-between items-center py-4 text-xs font-semibold text-slate-600 dark:text-slate-400">
-                    <div className="space-y-1">
-                      <div className="font-extrabold text-sm text-slate-800 dark:text-slate-200">
-                        {order.id}
+                      <div className="space-y-1">
+                        <div className="font-extrabold text-sm text-slate-800 dark:text-slate-200">
+                          {order.id}
+                        </div>
+                        <div className="text-[10px] text-slate-450">
+                          Pickup: {order.pickupTime} | Method: {order.paymentMethod}
+                        </div>
+                        <div className="text-[10px] text-slate-400 font-bold truncate max-w-[200px] sm:max-w-md">
+                          {order.items.map(item => `${item.name} (x${item.quantity})`).join(', ')}
+                        </div>
                       </div>
-                      <div className="text-[10px] text-slate-450">
-                        Pickup: {order.pickupTime} | Method: {order.paymentMethod}
-                      </div>
-                      <div className="text-[10px] text-slate-400 font-bold truncate max-w-[200px] sm:max-w-md">
-                        {order.items.map(item => `${item.name} (x${item.quantity})`).join(', ')}
-                      </div>
-                    </div>
 
-                    <div className="text-right space-y-1">
-                      <div className="font-black text-slate-800 dark:text-slate-100">
-                        ₹{order.total}
+                      <div className="text-right space-y-1">
+                        <div className="font-black text-slate-800 dark:text-slate-100">
+                          ₹{order.total}
+                        </div>
+                        <span className={`inline-block px-2 py-0.5 rounded text-[9px] uppercase font-black tracking-wider ${
+                          order.status === 'Cancelled'
+                            ? 'bg-red-100 dark:bg-red-950/30 text-red-500'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+                        }`}>
+                          {order.status === 'Cancelled' ? '✕ Cancelled' : 'Collected'}
+                        </span>
                       </div>
-                      <span className="inline-block bg-slate-100 dark:bg-slate-800 text-slate-500 px-2 py-0.5 rounded text-[9px] uppercase font-black tracking-wider">
-                        Collected
-                      </span>
                     </div>
-                  </div>
                 ))}
               </div>
             </div>

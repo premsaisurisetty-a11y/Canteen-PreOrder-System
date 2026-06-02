@@ -217,6 +217,17 @@ export const CanteenProvider = ({ children }) => {
     );
   };
 
+  // Student cancel order (only allowed when status is Placed)
+  const cancelOrder = (orderId) => {
+    setOrders((prevOrders) =>
+      prevOrders.map((order) =>
+        order.id === orderId && order.status === 'Placed'
+          ? { ...order, status: 'Cancelled' }
+          : order
+      )
+    );
+  };
+
   // Admin toggle item stock availability
   const toggleStock = (itemId) => {
     setMenuItems((prevMenu) =>
@@ -283,6 +294,7 @@ export const CanteenProvider = ({ children }) => {
         orders,
         placeOrder,
         updateOrderStatus,
+        cancelOrder,
         toggleStock,
         addMenuItem,
         editMenuItem,
