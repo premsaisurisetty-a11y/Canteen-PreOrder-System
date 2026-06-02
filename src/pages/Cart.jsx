@@ -70,7 +70,7 @@ const Cart = () => {
     setShowSuccessModal(true);
   };
 
-  const handleCheckout = (e) => {
+  const handleCheckout = async (e) => {
     e.preventDefault();
     if (cart.length === 0) return;
     if (paymentMethod === 'Pay at Counter') {
@@ -104,6 +104,46 @@ const Cart = () => {
         alert(`Payment failed: ${r.error.description}`);
       });
       rzp.open();
+      return;
+    }
+
+    // --- Cashfree ---
+    if (paymentMethod === 'Cashfree') {
+      setIsProcessing(true);
+      try {
+        const cfOrderId = 'CB-' + Date.now();
+        const savedTotal = grandTotal;
+
+        // 1. Create Cashfree order via serverless function
+        const res = await fetch('/api/create-order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            amount: savedTotal,
+            orderId: cfOrderId,
+            customerName: currentUser?.name || 'Student',
+          }),
+        });
+
+        const data = await res.json();
+
+        if (!data.payment_session_id) {
+          throw new Error(data.error || 'Could not initialize payment. Check API keys.');
+        }
+
+        // 2. Place order in context before redirect (saves to localStorage)
+        placeOrder(pickupTime, `Cashfree`);
+
+        // 3. Open Cashfree checkout (redirects to /orders after payment)
+        const cashfree = window.Cashfree({ mode: 'sandbox' });
+        cashfree.checkout({
+          paymentSessionId: data.payment_session_id,
+          returnUrl: window.location.origin + '/orders?cf_status={order_status}&cf_id=' + cfOrderId,
+        });
+      } catch (err) {
+        setIsProcessing(false);
+        alert('Cashfree error: ' + err.message);
+      }
       return;
     }
 
@@ -305,6 +345,31 @@ const Cart = () => {
                   <div>
                     <div className="text-sm font-bold text-slate-800 dark:text-slate-200">💵 Pay at Counter</div>
                     <div className="text-[11px] text-slate-400">Generate receipt now, pay cash/card when collecting.</div>
+                  </div>
+                </label>
+
+                {/* Cashfree — Real Gateway */}
+                <label className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition ${
+                  paymentMethod === 'Cashfree'
+                    ? 'border-orange-500 bg-orange-50/10 dark:bg-orange-950/5'
+                    : 'border-slate-100 dark:border-slate-900 hover:bg-slate-50 dark:hover:bg-slate-900'
+                }`}>
+                  <input type="radio" name="payment" value="Cashfree"
+                    checked={paymentMethod === 'Cashfree'}
+                    onChange={() => setPaymentMethod('Cashfree')}
+                    className="accent-orange-500" />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <div className="text-sm font-bold text-slate-800 dark:text-slate-200">💸 Cashfree Payments</div>
+                      <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-950/30 text-purple-600 dark:text-purple-400">Real</span>
+                    </div>
+                    <div className="text-[11px] text-slate-400">UPI, Cards (4111...), Net Banking via Cashfree sandbox.</div>
+                    <div className="flex gap-1.5 mt-1.5 text-[10px] text-slate-400 font-bold">
+                      <span className="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 rounded">UPI</span>
+                      <span className="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 rounded">Visa</span>
+                      <span className="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 rounded">Mastercard</span>
+                      <span className="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 rounded">Netbanking</span>
+                    </div>
                   </div>
                 </label>
 
