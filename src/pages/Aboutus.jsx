@@ -8,15 +8,15 @@ const Aboutus = () => {
       initials: "PS",
       gradient: "from-orange-500 to-amber-500",
       github: "https://github.com/premsaisurisetty-a11y",
-      linkedin: "https://www.linkedin.com/in/prem-sai-surisetty-833a69280/"
+      linkedin: "https://www.linkedin.com/in/surisetti-prem-sai-872003382/"
     },
     {
       name: "Sohan",
       role: "Co-Developer & Integrator",
       initials: "S",
       gradient: "from-amber-500 to-yellow-500",
-      github: "https://github.com/sohan-demo", // easily editable placeholder
-      linkedin: "https://linkedin.com/in/sohan-demo" // easily editable placeholder
+      github: "https://github.com/premsaisurisetty-a11y/Canteen-PreOrder-System",
+      linkedin: "https://www.linkedin.com/in/sohan-jadala-a7217a391/"
     }
   ];
 
