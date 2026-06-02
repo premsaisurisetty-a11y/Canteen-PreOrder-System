@@ -7,6 +7,8 @@ const Cart = () => {
   const { cart, addToCart, removeFromCart, updateCartQuantity, clearCart, placeOrder, currentUser } = useContext(CanteenContext);
   const navigate = useNavigate();
 
+  const RAZORPAY_KEY_ID = 'rzp_test_SwkeQzJxupXcSa';
+
   const [pickupTime, setPickupTime] = useState('As soon as possible (10-15 mins)');
   const [paymentMethod, setPaymentMethod] = useState('Pay at Counter');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -76,7 +78,36 @@ const Cart = () => {
       setTimeout(() => confirmOrder('Pay at Counter'), 1200);
       return;
     }
-    // Open custom payment modal
+
+    // --- Razorpay: Real gateway ---
+    if (paymentMethod === 'Razorpay') {
+      if (!window.Razorpay) {
+        alert('Payment gateway failed to load. Please refresh and try again.');
+        return;
+      }
+      setIsProcessing(true);
+      const options = {
+        key: RAZORPAY_KEY_ID,
+        amount: grandTotal * 100,
+        currency: 'INR',
+        name: 'CampusBites',
+        description: `Pre-Order — ${cart.length} item(s) | ${pickupTime}`,
+        prefill: { name: currentUser?.name || 'Student' },
+        notes: { pickup_slot: pickupTime, roll: currentUser?.rollNo || 'GUEST' },
+        theme: { color: '#f97316' },
+        modal: { ondismiss: () => setIsProcessing(false) },
+        handler: (response) => confirmOrder(`Razorpay (${response.razorpay_payment_id})`),
+      };
+      const rzp = new window.Razorpay(options);
+      rzp.on('payment.failed', (r) => {
+        setIsProcessing(false);
+        alert(`Payment failed: ${r.error.description}`);
+      });
+      rzp.open();
+      return;
+    }
+
+    // --- Custom mock form (Online) ---
     setPayError('');
     setShowPaymentModal(true);
   };
@@ -277,7 +308,31 @@ const Cart = () => {
                   </div>
                 </label>
 
-                {/* Online Payment */}
+                {/* Razorpay — Real Gateway */}
+                <label className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition ${
+                  paymentMethod === 'Razorpay'
+                    ? 'border-orange-500 bg-orange-50/10 dark:bg-orange-950/5'
+                    : 'border-slate-100 dark:border-slate-900 hover:bg-slate-50 dark:hover:bg-slate-900'
+                }`}>
+                  <input type="radio" name="payment" value="Razorpay"
+                    checked={paymentMethod === 'Razorpay'}
+                    onChange={() => setPaymentMethod('Razorpay')}
+                    className="accent-orange-500" />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <div className="text-sm font-bold text-slate-800 dark:text-slate-200">🏦 Razorpay Gateway</div>
+                      <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400">Real</span>
+                    </div>
+                    <div className="text-[11px] text-slate-400">Netbanking, Cards, Wallets via Razorpay test mode.</div>
+                    <div className="flex gap-1.5 mt-1.5 text-[10px] text-slate-400 font-bold">
+                      <span className="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 rounded">Netbanking</span>
+                      <span className="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 rounded">Cards</span>
+                      <span className="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 rounded">Wallets</span>
+                    </div>
+                  </div>
+                </label>
+
+                {/* Custom mock form */}
                 <label className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition ${
                   paymentMethod === 'Online'
                     ? 'border-orange-500 bg-orange-50/10 dark:bg-orange-950/5'
