@@ -1,5 +1,6 @@
 import React, { useContext, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { QRCodeSVG } from 'qrcode.react';
 import { CanteenContext } from '../context/CanteenContext';
 
 const Cart = () => {
@@ -362,51 +363,133 @@ const Cart = () => {
 
       </div>
 
-      {/* Checkout Success Modal Overlay */}
-      {showSuccessModal && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-950 border border-slate-100 dark:border-slate-800 rounded-3xl p-8 max-w-md w-full shadow-2xl text-center space-y-6 animate-scale-up">
+      {/* ✅ Full-Screen Order Confirmation Overlay */}
+      {showSuccessModal && placedOrderDetails && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
+          
+          {/* Floating confetti dots */}
+          <div className="absolute inset-0 overflow-hidden pointer-events-none">
+            {[...Array(18)].map((_, i) => (
+              <div
+                key={i}
+                className="absolute w-2 h-2 rounded-full opacity-60 animate-bounce"
+                style={{
+                  left: `${(i * 37 + 5) % 100}%`,
+                  top: `${(i * 53 + 10) % 90}%`,
+                  backgroundColor: ['#f97316','#10b981','#3b82f6','#f59e0b','#8b5cf6','#ef4444'][i % 6],
+                  animationDelay: `${(i * 0.15).toFixed(2)}s`,
+                  animationDuration: `${1.2 + (i % 4) * 0.3}s`,
+                }}
+              />
+            ))}
+          </div>
+
+          <div className="relative bg-white dark:bg-slate-950 border border-slate-100 dark:border-slate-800 rounded-3xl w-full max-w-md shadow-2xl overflow-hidden">
             
-            {/* Animated Ring Checkmark */}
-            <div className="w-20 h-20 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/50 rounded-full flex items-center justify-center mx-auto text-4xl text-emerald-500 shadow-inner">
-              ✓
-            </div>
-
-            <div className="space-y-2">
-              <h2 className="text-2xl font-black text-slate-800 dark:text-white tracking-tight">Pre-Order Successful!</h2>
-              <p className="text-xs text-slate-400 dark:text-slate-500 max-w-xs mx-auto">
-                Your order is registered with the kitchen and assigned a visual pick-up token.
-              </p>
-            </div>
-
-            {placedOrderDetails && (
-              <div className="bg-slate-50 dark:bg-slate-900 rounded-2xl p-4 border border-slate-100 dark:border-slate-800 space-y-2 text-xs text-left">
-                <div className="flex justify-between">
-                  <span className="text-slate-400 font-bold">Order ID:</span>
-                  <span className="font-extrabold text-slate-800 dark:text-slate-200">{placedOrderDetails.id}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400 font-bold">Scheduled Pickup:</span>
-                  <span className="font-extrabold text-orange-500">{placedOrderDetails.pickupTime}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400 font-bold">Total Paid:</span>
-                  <span className="font-extrabold text-slate-800 dark:text-slate-200">₹{placedOrderDetails.total + tax + platformFee}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400 font-bold">Method:</span>
-                  <span className="font-extrabold text-slate-800 dark:text-slate-200">{placedOrderDetails.paymentMethod}</span>
+            {/* Green header band */}
+            <div className="bg-gradient-to-r from-emerald-500 to-green-400 px-8 pt-10 pb-16 text-center relative">
+              {/* Pulsing ring checkmark */}
+              <div className="relative w-20 h-20 mx-auto mb-4">
+                <div className="absolute inset-0 bg-white/30 rounded-full animate-ping" />
+                <div className="absolute inset-0 bg-white/20 rounded-full animate-ping" style={{ animationDelay: '0.3s' }} />
+                <div className="relative w-20 h-20 bg-white rounded-full flex items-center justify-center shadow-lg">
+                  <svg className="w-10 h-10 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
                 </div>
               </div>
-            )}
+              <h2 className="text-2xl font-black text-white tracking-tight">Order Confirmed! 🎉</h2>
+              <p className="text-emerald-100 text-xs mt-1 font-medium">Your pre-order is placed & sent to the kitchen</p>
+            </div>
 
-            <button
-              onClick={closeSuccessAndRedirect}
-              className="w-full bg-slate-900 hover:bg-slate-850 dark:bg-slate-800 dark:hover:bg-slate-700 text-white font-extrabold text-xs uppercase py-3 rounded-xl shadow-md transition-all active:scale-98"
-            >
-              Track Order Status
-            </button>
-            
+            {/* Ticket tear line */}
+            <div className="relative h-0 flex items-center justify-between px-0 -mt-5 mb-0">
+              <div className="w-10 h-10 bg-slate-950/80 rounded-full -ml-5" />
+              <div className="flex-1 border-t-2 border-dashed border-slate-200 dark:border-slate-800 mx-2" />
+              <div className="w-10 h-10 bg-slate-950/80 rounded-full -mr-5" />
+            </div>
+
+            {/* Ticket body */}
+            <div className="px-8 pb-8 pt-6 space-y-5">
+
+              {/* Order ID + QR side by side */}
+              <div className="flex items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Order Token</p>
+                  <p className="text-2xl font-black text-slate-800 dark:text-white leading-none">{placedOrderDetails.id}</p>
+                  <div className="flex items-center gap-1.5 mt-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400">Sent to Kitchen</span>
+                  </div>
+                </div>
+                {/* Live QR */}
+                <div className="bg-white p-2 rounded-xl border-2 border-emerald-200 shadow-md">
+                  <QRCodeSVG
+                    value={JSON.stringify({
+                      id: placedOrderDetails.id,
+                      student: placedOrderDetails.userName,
+                      roll: placedOrderDetails.userRollNo,
+                      total: grandTotal,
+                      pickup: placedOrderDetails.pickupTime,
+                    })}
+                    size={80}
+                    bgColor="#ffffff"
+                    fgColor="#10b981"
+                    level="M"
+                  />
+                  <p className="text-[8px] font-black text-center text-emerald-500 mt-1 tracking-widest uppercase">Show at Counter</p>
+                </div>
+              </div>
+
+              {/* Divider */}
+              <div className="border-t border-dashed border-slate-200 dark:border-slate-800" />
+
+              {/* Order details */}
+              <div className="space-y-2 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-slate-400 font-semibold">📅 Pickup Slot</span>
+                  <span className="font-extrabold text-orange-500 text-right max-w-[180px]">{placedOrderDetails.pickupTime}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400 font-semibold">💳 Payment</span>
+                  <span className="font-bold text-slate-700 dark:text-slate-300 text-right max-w-[200px] truncate">{placedOrderDetails.paymentMethod}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400 font-semibold">🧾 Items</span>
+                  <span className="font-bold text-slate-700 dark:text-slate-300">{placedOrderDetails.items.length} item(s)</span>
+                </div>
+              </div>
+
+              {/* Divider */}
+              <div className="border-t border-dashed border-slate-200 dark:border-slate-800" />
+
+              {/* Items list */}
+              <div className="space-y-1.5">
+                {placedOrderDetails.items.map((item, idx) => (
+                  <div key={idx} className="flex justify-between text-xs font-semibold text-slate-600 dark:text-slate-400">
+                    <span>{item.name} <span className="text-slate-400">×{item.quantity}</span></span>
+                    <span className="text-slate-800 dark:text-slate-200">₹{item.price * item.quantity}</span>
+                  </div>
+                ))}
+                <div className="flex justify-between text-sm font-black text-slate-800 dark:text-white pt-2 border-t border-slate-100 dark:border-slate-900">
+                  <span>Grand Total</span>
+                  <span className="text-emerald-500">₹{grandTotal}</span>
+                </div>
+              </div>
+
+              {/* CTA */}
+              <button
+                onClick={closeSuccessAndRedirect}
+                className="w-full bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-600 hover:to-green-600 text-white font-extrabold text-sm py-3.5 rounded-2xl shadow-lg shadow-emerald-500/25 transition-all active:scale-95 flex items-center justify-center gap-2"
+              >
+                📍 Track My Order Live
+              </button>
+
+              <p className="text-center text-[10px] text-slate-400">
+                Estimated prep starts 10 min before your pickup slot
+              </p>
+
+            </div>
           </div>
         </div>
       )}
