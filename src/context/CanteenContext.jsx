@@ -87,55 +87,98 @@ const INITIAL_MENU = [
 
 export const CanteenProvider = ({ children }) => {
   const [menuItems, setMenuItems] = useState(() => {
-    const savedMenu = localStorage.getItem('canteen_menu');
-    return savedMenu ? JSON.parse(savedMenu) : INITIAL_MENU;
+    try {
+      const savedMenu = localStorage.getItem('canteen_menu');
+      return savedMenu ? JSON.parse(savedMenu) : INITIAL_MENU;
+    } catch (e) {
+      console.error("Failed to parse saved menu, falling back to initial menu:", e);
+      return INITIAL_MENU;
+    }
   });
 
   const [cart, setCart] = useState(() => {
-    const savedCart = localStorage.getItem('canteen_cart');
-    return savedCart ? JSON.parse(savedCart) : [];
+    try {
+      const savedCart = localStorage.getItem('canteen_cart');
+      return savedCart ? JSON.parse(savedCart) : [];
+    } catch (e) {
+      console.error("Failed to parse saved cart:", e);
+      return [];
+    }
   });
 
   const [orders, setOrders] = useState(() => {
-    const savedOrders = localStorage.getItem('canteen_orders');
-    return savedOrders ? JSON.parse(savedOrders) : [];
+    try {
+      const savedOrders = localStorage.getItem('canteen_orders');
+      return savedOrders ? JSON.parse(savedOrders) : [];
+    } catch (e) {
+      console.error("Failed to parse saved orders:", e);
+      return [];
+    }
   });
 
   const [currentUser, setCurrentUser] = useState(() => {
-    const savedUser = localStorage.getItem('canteen_user');
-    return savedUser ? JSON.parse(savedUser) : { name: "Prem", rollNo: "2520030561", role: "student" };
+    try {
+      const savedUser = localStorage.getItem('canteen_user');
+      return savedUser ? JSON.parse(savedUser) : { name: "Prem", rollNo: "2520030561", role: "student" };
+    } catch (e) {
+      console.error("Failed to parse saved user:", e);
+      return { name: "Prem", rollNo: "2520030561", role: "student" };
+    }
   });
 
   // Sync state to local storage when changed
   useEffect(() => {
-    localStorage.setItem('canteen_menu', JSON.stringify(menuItems));
+    try {
+      localStorage.setItem('canteen_menu', JSON.stringify(menuItems));
+    } catch (e) {
+      console.error("Failed to save menu to localStorage:", e);
+    }
   }, [menuItems]);
 
   useEffect(() => {
-    localStorage.setItem('canteen_cart', JSON.stringify(cart));
+    try {
+      localStorage.setItem('canteen_cart', JSON.stringify(cart));
+    } catch (e) {
+      console.error("Failed to save cart to localStorage:", e);
+    }
   }, [cart]);
 
   useEffect(() => {
-    localStorage.setItem('canteen_orders', JSON.stringify(orders));
+    try {
+      localStorage.setItem('canteen_orders', JSON.stringify(orders));
+    } catch (e) {
+      console.error("Failed to save orders to localStorage:", e);
+    }
   }, [orders]);
 
   useEffect(() => {
-    if (currentUser) {
-      localStorage.setItem('canteen_user', JSON.stringify(currentUser));
-    } else {
-      localStorage.removeItem('canteen_user');
+    try {
+      if (currentUser) {
+        localStorage.setItem('canteen_user', JSON.stringify(currentUser));
+      } else {
+        localStorage.removeItem('canteen_user');
+      }
+    } catch (e) {
+      console.error("Failed to save user to localStorage:", e);
     }
   }, [currentUser]);
 
   // Sync state across different tabs/windows (Real-time connection between Admin & Student)
   useEffect(() => {
     const handleStorageChange = (e) => {
-      if (e.key === 'canteen_orders') {
-        setOrders(JSON.parse(e.newValue || '[]'));
-      } else if (e.key === 'canteen_menu') {
-        setMenuItems(JSON.parse(e.newValue || '[]'));
-      } else if (e.key === 'canteen_cart') {
-        setCart(JSON.parse(e.newValue || '[]'));
+      try {
+        // If storage is cleared or key removed, ignore to prevent resetting active states in other tabs
+        if (!e.newValue) return;
+
+        if (e.key === 'canteen_orders') {
+          setOrders(JSON.parse(e.newValue));
+        } else if (e.key === 'canteen_menu') {
+          setMenuItems(JSON.parse(e.newValue));
+        } else if (e.key === 'canteen_cart') {
+          setCart(JSON.parse(e.newValue));
+        }
+      } catch (err) {
+        console.error("Storage sync event parsing failed:", err);
       }
     };
 
