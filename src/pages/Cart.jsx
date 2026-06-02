@@ -7,50 +7,15 @@ const Cart = () => {
   const { cart, addToCart, removeFromCart, updateCartQuantity, clearCart, placeOrder, currentUser } = useContext(CanteenContext);
   const navigate = useNavigate();
 
-  const RAZORPAY_KEY_ID = 'rzp_test_SwkeQzJxupXcSa';
-
   const [pickupTime, setPickupTime] = useState('As soon as possible (10-15 mins)');
   const [paymentMethod, setPaymentMethod] = useState('Pay at Counter');
   const [isProcessing, setIsProcessing] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [placedOrderDetails, setPlacedOrderDetails] = useState(null);
 
-  // Custom payment modal state
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [payTab, setPayTab] = useState('card'); // 'card' | 'upi'
-  const [cardNumber, setCardNumber] = useState('');
-  const [cardExpiry, setCardExpiry] = useState('');
-  const [cardCvv, setCardCvv] = useState('');
-  const [cardName, setCardName] = useState(currentUser?.name || '');
-  const [upiId, setUpiId] = useState('');
-  const [payError, setPayError] = useState('');
-  const [isPayProcessing, setIsPayProcessing] = useState(false);
-
-  // Card type detection
-  const getCardType = (num) => {
-    const n = num.replace(/\s/g, '');
-    if (/^4/.test(n)) return 'visa';
-    if (/^5[1-5]/.test(n)) return 'mastercard';
-    if (/^6/.test(n)) return 'rupay';
-    return null;
-  };
-
-  // Format card number as XXXX XXXX XXXX XXXX
-  const formatCardNumber = (val) => {
-    const digits = val.replace(/\D/g, '').slice(0, 16);
-    return digits.replace(/(\d{4})(?=\d)/g, '$1 ');
-  };
-
-  // Format expiry as MM/YY
-  const formatExpiry = (val) => {
-    const digits = val.replace(/\D/g, '').slice(0, 4);
-    if (digits.length >= 3) return digits.slice(0, 2) + '/' + digits.slice(2);
-    return digits;
-  };
-
   const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-  const tax = Math.round(cartTotal * 0.05); // 5% CGST/SGST mockup
-  const platformFee = 5; // 5 rupees convenience charge
+  const tax = Math.round(cartTotal * 0.05);
+  const platformFee = 5;
   const grandTotal = cartTotal + tax + platformFee;
 
   const pickupSlots = [
@@ -62,7 +27,6 @@ const Cart = () => {
     'Evening Shift Departure (5:15 PM)'
   ];
 
-  // Confirm order after successful payment (or counter pay)
   const confirmOrder = (method) => {
     const order = placeOrder(pickupTime, method);
     setPlacedOrderDetails(order);
@@ -73,108 +37,46 @@ const Cart = () => {
   const handleCheckout = async (e) => {
     e.preventDefault();
     if (cart.length === 0) return;
+
     if (paymentMethod === 'Pay at Counter') {
       setIsProcessing(true);
       setTimeout(() => confirmOrder('Pay at Counter'), 1200);
       return;
     }
 
-    // --- Razorpay: Real gateway ---
-    if (paymentMethod === 'Razorpay') {
-      if (!window.Razorpay) {
-        alert('Payment gateway failed to load. Please refresh and try again.');
-        return;
-      }
-      setIsProcessing(true);
-      const options = {
-        key: RAZORPAY_KEY_ID,
-        amount: grandTotal * 100,
-        currency: 'INR',
-        name: 'CampusBites',
-        description: `Pre-Order — ${cart.length} item(s) | ${pickupTime}`,
-        prefill: { name: currentUser?.name || 'Student' },
-        notes: { pickup_slot: pickupTime, roll: currentUser?.rollNo || 'GUEST' },
-        theme: { color: '#f97316' },
-        modal: { ondismiss: () => setIsProcessing(false) },
-        handler: (response) => confirmOrder(`Razorpay (${response.razorpay_payment_id})`),
-      };
-      const rzp = new window.Razorpay(options);
-      rzp.on('payment.failed', (r) => {
-        setIsProcessing(false);
-        alert(`Payment failed: ${r.error.description}`);
+    // Cashfree
+    setIsProcessing(true);
+    try {
+      const cfOrderId = 'CB-' + Date.now();
+      const savedTotal = grandTotal;
+
+      const res = await fetch('/api/create-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: savedTotal,
+          orderId: cfOrderId,
+          customerName: currentUser?.name || 'Student',
+        }),
       });
-      rzp.open();
-      return;
-    }
 
-    // --- Cashfree ---
-    if (paymentMethod === 'Cashfree') {
-      setIsProcessing(true);
-      try {
-        const cfOrderId = 'CB-' + Date.now();
-        const savedTotal = grandTotal;
+      const data = await res.json();
 
-        // 1. Create Cashfree order via serverless function
-        const res = await fetch('/api/create-order', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            amount: savedTotal,
-            orderId: cfOrderId,
-            customerName: currentUser?.name || 'Student',
-          }),
-        });
-
-        const data = await res.json();
-
-        if (!data.payment_session_id) {
-          throw new Error(data.error || 'Could not initialize payment. Check API keys.');
-        }
-
-        // 2. Place order in context before redirect (saves to localStorage)
-        placeOrder(pickupTime, `Cashfree`);
-
-        // 3. Open Cashfree checkout (redirects to /orders after payment)
-        const cashfree = window.Cashfree({ mode: 'sandbox' });
-        cashfree.checkout({
-          paymentSessionId: data.payment_session_id,
-          returnUrl: window.location.origin + '/orders?cf_status={order_status}&cf_id=' + cfOrderId,
-        });
-      } catch (err) {
-        setIsProcessing(false);
-        alert('Cashfree error: ' + err.message);
+      if (!data.payment_session_id) {
+        throw new Error(data.error || 'Could not initialize payment.');
       }
-      return;
+
+      placeOrder(pickupTime, 'Cashfree');
+
+      const cashfree = window.Cashfree({ mode: 'sandbox' });
+      cashfree.checkout({
+        paymentSessionId: data.payment_session_id,
+        returnUrl: window.location.origin + '/orders?cf_status={order_status}&cf_id=' + cfOrderId,
+      });
+    } catch (err) {
+      setIsProcessing(false);
+      alert('Payment error: ' + err.message);
     }
-
-    // --- Custom mock form (Online) ---
-    setPayError('');
-    setShowPaymentModal(true);
-  };
-
-  const handlePaymentSubmit = (e) => {
-    e.preventDefault();
-    setPayError('');
-
-    if (payTab === 'card') {
-      const digits = cardNumber.replace(/\s/g, '');
-      if (digits.length < 16) { setPayError('Enter a valid 16-digit card number.'); return; }
-      if (cardExpiry.length < 5) { setPayError('Enter a valid expiry date (MM/YY).'); return; }
-      if (cardCvv.length < 3) { setPayError('Enter a valid 3-digit CVV.'); return; }
-      if (!cardName.trim()) { setPayError('Enter the cardholder name.'); return; }
-    } else {
-      if (!upiId.includes('@')) { setPayError('Enter a valid UPI ID (e.g. name@upi).'); return; }
-    }
-
-    setIsPayProcessing(true);
-    setTimeout(() => {
-      const method = payTab === 'card'
-        ? `Card ····${cardNumber.replace(/\s/g,'').slice(-4)} (${getCardType(cardNumber) || 'Card'})`
-        : `UPI (${upiId})`;
-      setShowPaymentModal(false);
-      setIsPayProcessing(false);
-      confirmOrder(method);
-    }, 2200);
   };
 
   const closeSuccessAndRedirect = () => {
@@ -348,7 +250,7 @@ const Cart = () => {
                   </div>
                 </label>
 
-                {/* Cashfree — Real Gateway */}
+                {/* Cashfree */}
                 <label className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition ${
                   paymentMethod === 'Cashfree'
                     ? 'border-orange-500 bg-orange-50/10 dark:bg-orange-950/5'
@@ -360,68 +262,15 @@ const Cart = () => {
                     className="accent-orange-500" />
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
-                      <div className="text-sm font-bold text-slate-800 dark:text-slate-200">💸 Cashfree Payments</div>
-                      <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-950/30 text-purple-600 dark:text-purple-400">Real</span>
+                      <div className="text-sm font-bold text-slate-800 dark:text-slate-200">💸 Pay Online</div>
+                      <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-950/30 text-purple-600 dark:text-purple-400">Secure</span>
                     </div>
-                    <div className="text-[11px] text-slate-400">UPI, Cards (4111...), Net Banking via Cashfree sandbox.</div>
-                    <div className="flex gap-1.5 mt-1.5 text-[10px] text-slate-400 font-bold">
-                      <span className="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 rounded">UPI</span>
-                      <span className="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 rounded">Visa</span>
-                      <span className="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 rounded">Mastercard</span>
-                      <span className="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 rounded">Netbanking</span>
-                    </div>
-                  </div>
-                </label>
-
-                {/* Razorpay — Real Gateway */}
-                <label className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition ${
-                  paymentMethod === 'Razorpay'
-                    ? 'border-orange-500 bg-orange-50/10 dark:bg-orange-950/5'
-                    : 'border-slate-100 dark:border-slate-900 hover:bg-slate-50 dark:hover:bg-slate-900'
-                }`}>
-                  <input type="radio" name="payment" value="Razorpay"
-                    checked={paymentMethod === 'Razorpay'}
-                    onChange={() => setPaymentMethod('Razorpay')}
-                    className="accent-orange-500" />
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <div className="text-sm font-bold text-slate-800 dark:text-slate-200">🏦 Razorpay Gateway</div>
-                      <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400">Real</span>
-                    </div>
-                    <div className="text-[11px] text-slate-400">Netbanking, Cards, Wallets via Razorpay test mode.</div>
-                    <div className="flex gap-1.5 mt-1.5 text-[10px] text-slate-400 font-bold">
-                      <span className="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 rounded">Netbanking</span>
-                      <span className="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 rounded">Cards</span>
-                      <span className="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 rounded">Wallets</span>
-                    </div>
-                  </div>
-                </label>
-
-                {/* Custom mock form */}
-                <label className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition ${
-                  paymentMethod === 'Online'
-                    ? 'border-orange-500 bg-orange-50/10 dark:bg-orange-950/5'
-                    : 'border-slate-100 dark:border-slate-900 hover:bg-slate-50 dark:hover:bg-slate-900'
-                }`}>
-                  <input
-                    type="radio"
-                    name="payment"
-                    value="Online"
-                    checked={paymentMethod === 'Online'}
-                    onChange={() => setPaymentMethod('Online')}
-                    className="accent-orange-500"
-                  />
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <div className="text-sm font-bold text-slate-800 dark:text-slate-200">📱 UPI / Debit / Credit Card</div>
-                      <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400">Secure</span>
-                    </div>
-                    <div className="text-[11px] text-slate-400">Pay instantly via UPI, Visa, Mastercard or RuPay.</div>
+                    <div className="text-[11px] text-slate-400">UPI, Debit/Credit Cards, Net Banking via Cashfree.</div>
                     <div className="flex gap-1.5 mt-1.5 text-[10px] text-slate-400 font-bold">
                       <span className="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 rounded">GPay</span>
                       <span className="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 rounded">PhonePe</span>
                       <span className="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 rounded">Visa</span>
-                      <span className="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 rounded">RuPay</span>
+                      <span className="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 rounded">Mastercard</span>
                     </div>
                   </div>
                 </label>
@@ -467,10 +316,10 @@ const Cart = () => {
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                     </svg>
-                    Processing Order...
+                    {paymentMethod === 'Cashfree' ? 'Opening Cashfree...' : 'Processing...'}
                   </>
-                ) : paymentMethod === 'Online' ? (
-                  `Proceed to Pay ₹${grandTotal} →`
+                ) : paymentMethod === 'Cashfree' ? (
+                  `🔒 Pay ₹${grandTotal} via Cashfree →`
                 ) : (
                   `Confirm Pre-Order (₹${grandTotal})`
                 )}
@@ -483,162 +332,7 @@ const Cart = () => {
 
       </div>
 
-      {/* 💳 Custom Payment Modal */}
-      {showPaymentModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-md shadow-2xl overflow-hidden">
 
-            {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800">
-              <div>
-                <h3 className="font-black text-slate-800 dark:text-white text-base">Secure Payment</h3>
-                <p className="text-[11px] text-slate-400">Amount: <span className="font-black text-orange-500">₹{grandTotal}</span></p>
-              </div>
-              <button onClick={() => setShowPaymentModal(false)} className="text-slate-400 hover:text-slate-700 dark:hover:text-white text-xl font-black transition">✕</button>
-            </div>
-
-            {/* Tabs */}
-            <div className="flex border-b border-slate-100 dark:border-slate-800">
-              {['card', 'upi'].map(tab => (
-                <button
-                  key={tab}
-                  onClick={() => { setPayTab(tab); setPayError(''); }}
-                  className={`flex-1 py-3 text-xs font-extrabold uppercase tracking-wider transition ${
-                    payTab === tab
-                      ? 'border-b-2 border-orange-500 text-orange-500'
-                      : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
-                  }`}
-                >
-                  {tab === 'card' ? '💳 Card' : '📱 UPI'}
-                </button>
-              ))}
-            </div>
-
-            <form onSubmit={handlePaymentSubmit} className="p-6 space-y-4">
-
-              {payTab === 'card' && (
-                <>
-                  {/* Live Card Preview */}
-                  <div className={`relative rounded-2xl p-5 text-white overflow-hidden shadow-lg ${
-                    getCardType(cardNumber) === 'mastercard' ? 'bg-gradient-to-br from-red-600 to-orange-500'
-                    : getCardType(cardNumber) === 'rupay' ? 'bg-gradient-to-br from-blue-700 to-cyan-500'
-                    : 'bg-gradient-to-br from-slate-800 to-slate-600'
-                  }`}>
-                    <div className="flex justify-between items-start mb-6">
-                      <div className="text-[10px] font-black uppercase tracking-widest opacity-70">CampusBites Pay</div>
-                      <div className="text-xs font-black uppercase opacity-90">
-                        {getCardType(cardNumber) === 'visa' && 'VISA'}
-                        {getCardType(cardNumber) === 'mastercard' && 'MASTERCARD'}
-                        {getCardType(cardNumber) === 'rupay' && 'RuPay'}
-                        {!getCardType(cardNumber) && '●●●'}
-                      </div>
-                    </div>
-                    <div className="text-lg font-mono font-black tracking-widest mb-4 opacity-90">
-                      {(cardNumber || '•••• •••• •••• ••••').padEnd(19, '•')}
-                    </div>
-                    <div className="flex justify-between items-end">
-                      <div>
-                        <div className="text-[8px] uppercase opacity-60 mb-0.5">Card Holder</div>
-                        <div className="text-sm font-bold uppercase tracking-wide">{cardName || currentUser?.name || 'YOUR NAME'}</div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-[8px] uppercase opacity-60 mb-0.5">Expires</div>
-                        <div className="text-sm font-bold">{cardExpiry || 'MM/YY'}</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Card fields */}
-                  <div className="space-y-3">
-                    <input
-                      type="text"
-                      placeholder="Card Number"
-                      value={cardNumber}
-                      onChange={e => setCardNumber(formatCardNumber(e.target.value))}
-                      maxLength={19}
-                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm font-mono font-bold text-slate-800 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500/30"
-                    />
-                    <div className="grid grid-cols-2 gap-3">
-                      <input
-                        type="text"
-                        placeholder="MM/YY"
-                        value={cardExpiry}
-                        onChange={e => setCardExpiry(formatExpiry(e.target.value))}
-                        maxLength={5}
-                        className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm font-bold text-slate-800 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500/30"
-                      />
-                      <input
-                        type="password"
-                        placeholder="CVV"
-                        value={cardCvv}
-                        onChange={e => setCardCvv(e.target.value.replace(/\D/g,'').slice(0,3))}
-                        maxLength={3}
-                        className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm font-bold text-slate-800 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500/30"
-                      />
-                    </div>
-                    <input
-                      type="text"
-                      placeholder="Cardholder Name"
-                      value={cardName}
-                      onChange={e => setCardName(e.target.value)}
-                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm font-bold text-slate-800 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500/30"
-                    />
-                  </div>
-                </>
-              )}
-
-              {payTab === 'upi' && (
-                <div className="space-y-4 py-2">
-                  <div className="text-center space-y-1">
-                    <div className="text-4xl">📱</div>
-                    <p className="text-sm font-bold text-slate-700 dark:text-slate-300">Enter your UPI ID</p>
-                    <p className="text-[11px] text-slate-400">Google Pay, PhonePe, Paytm, BHIM</p>
-                  </div>
-                  <input
-                    type="text"
-                    placeholder="yourname@upi"
-                    value={upiId}
-                    onChange={e => setUpiId(e.target.value)}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm font-bold text-slate-800 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500/30 text-center"
-                  />
-                  <div className="bg-orange-50 dark:bg-orange-950/20 border border-orange-100 dark:border-orange-900/30 rounded-xl p-3 text-[11px] text-orange-600 dark:text-orange-400 font-semibold text-center">
-                    A payment request of <strong>₹{grandTotal}</strong> will be sent to your UPI app
-                  </div>
-                </div>
-              )}
-
-              {/* Error */}
-              {payError && (
-                <p className="text-xs text-red-500 font-bold flex items-center gap-1">
-                  <span>⚠</span> {payError}
-                </p>
-              )}
-
-              {/* Pay button */}
-              <button
-                type="submit"
-                disabled={isPayProcessing}
-                className="w-full bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 disabled:opacity-60 text-white font-extrabold py-3.5 rounded-2xl shadow-lg shadow-orange-500/20 transition-all active:scale-95 flex items-center justify-center gap-2"
-              >
-                {isPayProcessing ? (
-                  <>
-                    <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                    </svg>
-                    Verifying Payment...
-                  </>
-                ) : (
-                  `🔒 Pay ₹${grandTotal} Securely`
-                )}
-              </button>
-
-              <p className="text-center text-[10px] text-slate-400">🔐 256-bit SSL Encrypted · PCI DSS Compliant</p>
-
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* ✅ Full-Screen Order Confirmation Overlay */}
       {showSuccessModal && placedOrderDetails && (
