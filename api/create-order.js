@@ -25,14 +25,14 @@ export default async function handler(req, res) {
         customer_details: {
           customer_id: 'cust_' + orderId,
           customer_name: customerName || 'Student',
-          customer_email: 'student@campusbites.edu',
+          customer_email: 'student@canteenbites.edu',
           customer_phone: '9999999999',
         },
         order_meta: {
           return_url: `${req.headers.origin || 'https://canteen-pre-order-system.vercel.app'}/orders?cf_order_id=${orderId}&status={order_status}`,
         },
         order_tags: {
-          app: 'CampusBites',
+          app: 'CanteenBites',
         },
       }),
     });
