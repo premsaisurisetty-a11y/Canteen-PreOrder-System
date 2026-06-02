@@ -82,7 +82,7 @@ const Orders = () => {
 
                         <div className="space-y-3">
                           <div className="flex justify-between items-center text-[10px] font-black tracking-widest text-orange-600 dark:text-orange-400 uppercase leading-none">
-                            <span>CampusBites Token</span>
+                            <span>CanteenBites Token</span>
                             <span>{order.paymentMethod}</span>
                           </div>
                           

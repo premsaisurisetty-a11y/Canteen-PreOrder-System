@@ -14,10 +14,9 @@ const Login = () => {
         catch { return {}; }
     })();
 
-    const [name, setName]         = useState(savedCreds.name    || '');
     const [rollNo, setRollNo]     = useState(savedCreds.rollNo  || '');
     const [password, setPassword] = useState('');
-    const [rememberMe, setRememberMe] = useState(!!savedCreds.name);
+    const [rememberMe, setRememberMe] = useState(!!savedCreds.rollNo);
     const [error, setError]       = useState('');
     const [loading, setLoading]   = useState(false);
     const [showPass, setShowPass] = useState(false);
@@ -34,26 +33,24 @@ const Login = () => {
         e.preventDefault();
         setError('');
 
-        const trimName   = name.trim();
         const trimRollNo = rollNo.trim();
 
         // ── Admin path ──────────────────────────────────────────────────────
         if (password === '0206') {
             if (rememberMe) {
-                localStorage.setItem(SAVED_CREDS_KEY, JSON.stringify({ name: trimName, rollNo: trimRollNo }));
+                localStorage.setItem(SAVED_CREDS_KEY, JSON.stringify({ rollNo: trimRollNo }));
             } else {
                 localStorage.removeItem(SAVED_CREDS_KEY);
             }
             setLoading(true);
             setTimeout(() => {
-                login(trimName || 'Admin Manager', 'STAFF-01', 'admin');
+                login('Admin', 'STAFF-01', 'admin');
                 navigate('/admin');
             }, 400);
             return;
         }
 
-        // ── Student path ────────────────────────────────────────────────────
-        if (!trimName) { setError('Please enter your name.'); return; }
+        // ── Student path ────────────────────────────────────────────────────────
         if (!trimRollNo) { setError('Please enter your roll number.'); return; }
 
         // Basic roll number validation: at least 5 alphanumeric chars
@@ -63,14 +60,14 @@ const Login = () => {
         }
 
         if (rememberMe) {
-            localStorage.setItem(SAVED_CREDS_KEY, JSON.stringify({ name: trimName, rollNo: trimRollNo }));
+            localStorage.setItem(SAVED_CREDS_KEY, JSON.stringify({ rollNo: trimRollNo }));
         } else {
             localStorage.removeItem(SAVED_CREDS_KEY);
         }
 
         setLoading(true);
         setTimeout(() => {
-            login(trimName, trimRollNo, 'student');
+            login(trimRollNo, trimRollNo, 'student');
             navigate('/');
         }, 400);
     };
@@ -93,10 +90,10 @@ const Login = () => {
                             CB
                         </div>
                         <h1 className="text-2xl font-black text-slate-800 dark:text-white tracking-tight">
-                            Welcome to CampusBites
+                            Welcome to CanteenBites
                         </h1>
                         <p className="text-xs text-slate-400">
-                            Sign in with your name &amp; roll number to start ordering.
+                            Sign in with your roll number to start ordering.
                         </p>
                     </div>
 
@@ -109,22 +106,6 @@ const Login = () => {
 
                     {/* Form */}
                     <form onSubmit={handleSubmit} className="space-y-4">
-
-                        {/* Name */}
-                        <div>
-                            <label htmlFor="login-name" className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1.5">
-                                Full Name
-                            </label>
-                            <input
-                                id="login-name"
-                                type="text"
-                                value={name}
-                                onChange={(e) => { setName(e.target.value); setError(''); }}
-                                className={inputCls}
-                                placeholder="e.g. Prem Kumar"
-                                autoComplete="name"
-                            />
-                        </div>
 
                         {/* Roll Number */}
                         <div>

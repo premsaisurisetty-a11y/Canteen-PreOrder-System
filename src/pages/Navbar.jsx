@@ -32,7 +32,7 @@ const Navbar = () => {
           </div>
           <div className="flex flex-col">
             <span className="font-black text-xl text-slate-800 dark:text-white tracking-tight group-hover:text-orange-500 transition-colors">
-              CampusBites
+              CanteenBites
             </span>
             <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest leading-none">
               College Canteen
