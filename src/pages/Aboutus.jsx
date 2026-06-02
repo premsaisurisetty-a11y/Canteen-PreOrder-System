@@ -15,7 +15,7 @@ const Aboutus = () => {
       role: "Co-Developer & Integrator",
       initials: "S",
       gradient: "from-amber-500 to-yellow-500",
-      github: "https://github.com/premsaisurisetty-a11y/Canteen-PreOrder-System",
+      github: "https://github.com/sohanjadala-web",
       linkedin: "https://www.linkedin.com/in/sohan-jadala-a7217a391/"
     }
   ];
